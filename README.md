@@ -32,8 +32,28 @@ boot2docker up
 docker images
 # should be nothing there
 
-docker run -d --name redis -p 10000:6379 redis
+for p in 1 2 3 4; do
+  port="1000$p"
+  dir="/src/redis/data$p"
+  name="redis$p"
+  boot2docker ssh "sudo mkdir -p $dir"
+  docker run -d --name $name -v $dir:/data -p $port:6379 redis
+done
+
+redis_host=192.168.59.104
+port=10001
+file=~/rads_data/raw/2015-04-01/part-r-00000.gz
+
+python post_cats_simple.py --host $redis_host --port $port $file
+
+sites=$(redis-cli -h 192.168.59.104 -p 10001 smembers 'cat_site/ns:1:cat:17' | cut -d\" -f2)
 
 
- docker run -d --name redis1 -p 10001:6379 redis
- 
+partner_id=1
+for p in 1 2 3 4; do 
+  port="1000$p"
+  redis-cli -h $redis_host -p $port sadd "perms/partner:$partner_id" $sites
+  query_sha=$(redis-cli  -h $redis_host -p $port script load "$(cat pop_count_simple.lua)" )
+  redis-cli -h $redis_host -p $port evalsha $query_sha 1 1 1 17
+done
+
